@@ -1,0 +1,147 @@
+#include <iostream>
+#include <ros/ros.h>
+#include <tf/tf.h>
+#include <fstream>
+#include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/WrenchStamped.h>
+#include <nav_msgs/Odometry.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <time.h>
+#include <cmath>
+#include <math.h>
+#include <ros/duration.h>
+#include <chrono>
+
+using namespace std;
+string filename_;
+double start_time, q1_in, q2_in;
+#define PI 3.1416
+#define Q10 3000
+#define Q20 2065
+
+string date_filename()
+{
+  auto now = std::chrono::system_clock::now();
+  std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+  struct tm *parts = std::localtime(&now_c);
+  //Assign
+  std::string filename=               std::to_string(parts->tm_mday) //Set Year
+    + "_" + std::to_string(parts->tm_mon+1) //Set Month
+    + "_" + std::to_string(parts->tm_year-100) //Set day
+    + "_" + std::to_string(parts->tm_hour) //Set hour
+    + "min" + std::to_string(parts->tm_min) ;
+  return filename;	
+
+}
+
+double int2rad(double position, int id)
+{
+  int q0;
+  if(id==1)
+    q0 = Q10;
+  else
+    q0 = Q20;
+
+  double deg = (position-q0)*(360/4096.0);	  
+  double angle = deg*3.1416/180;
+  return angle;
+}
+
+void leader_cb(const nav_msgs::Odometry& msg)
+{
+  double t = ros::Time::now().toSec() - start_time ;
+  tf::Quaternion q(msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w);
+  tf::Matrix3x3 R(q);
+  double roll, pitch, yaw;
+  R.getRPY(roll, pitch, yaw);
+  ofstream ufile;
+  ufile.open("/home/vulcan3/Documents/matrice_L_UAV_" + filename_ +".txt", std::ios::out | std::ios::app);
+  ufile << t << ", " << msg.pose.pose.position.x << ", " << msg.pose.pose.position.y << ", " << msg.pose.pose.position.z << ", " << roll << ", " << pitch << ", " << yaw << "\n" ;
+  ufile.close();
+}
+
+void follower_cb(const nav_msgs::Odometry& msg) 
+{
+  double t = ros::Time::now().toSec() - start_time ;
+  tf::Quaternion q(msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w);
+  tf::Matrix3x3 R(q);
+  double roll, pitch, yaw;
+  R.getRPY(roll, pitch, yaw);
+  ofstream ufile;
+  ufile.open("/home/vulcan3/Documents/matrice_F_UAV_" + filename_ +".txt", std::ios::out | std::ios::app);
+  ufile << t << ", " << msg.pose.pose.position.x << ", " << msg.pose.pose.position.y << ", " << msg.pose.pose.position.z << ", " << roll << ", " << pitch << ", " << yaw << "\n" ;
+  ufile.close();	
+}
+
+void vision_cb(const geometry_msgs::PoseArray& msg){
+  double t = ros::Time::now().toSec() - start_time ;
+  tf::Quaternion q(msg.poses[0].orientation.x, msg.poses[0].orientation.y, msg.poses[0].orientation.z, msg.poses[0].orientation.w);
+  tf::Matrix3x3 R(q);
+  double roll, pitch, yaw;
+  R.getRPY(roll, pitch, yaw);
+  ofstream ufile;
+  ufile.open("/home/vulcan3/Documents/matrice_VIZ_" + filename_ +".txt", std::ios::out | std::ios::app);
+  ufile << t << ", " << msg.poses[0].position.x << ", " << msg.poses[0].position.y << ", " << msg.poses[0].position.z << ", " << roll << ", " << pitch << ", " << yaw << "\n" ;
+  ufile.close();	
+}
+
+void follow_rob_cb(const geometry_msgs::Vector3& msg){
+  double t = ros::Time::now().toSec() - start_time ;
+  double q1 = int2rad(msg.x,1) + q1_in;
+  double q2 = int2rad(msg.y,2) + q2_in;
+  ofstream ufile;
+  ufile.open("/home/vulcan3/Documents/matrice_F_ROB_" + filename_ +".txt", std::ios::out | std::ios::app);
+  ufile << t << ", " << q1 << ", " << q2 << "\n" ;
+  ufile.close();	
+}
+
+void ft_cb(const geometry_msgs::WrenchStamped& msg){
+  double t = ros::Time::now().toSec() - start_time ;
+  ofstream ufile;
+  ufile.open("/home/vulcan3/Documents/matrice_FT_" + filename_ +".txt", std::ios::out | std::ios::app);
+  ufile << t << ", " << msg.wrench.force.x << ", " << msg.wrench.force.y << ", " << msg.wrench.force.z << ", " << msg.wrench.torque.x << ", " << msg.wrench.torque.y << ", " << msg.wrench.torque.z << "\n" ;
+  ufile.close();	  
+}
+
+
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "proj_log_node");
+  ros::NodeHandle nh;
+  start_time = ros::Time::now().toSec();
+  filename_ = date_filename();
+
+  q1_in = 1.0;
+  q2_in = 0.5708;
+  
+  ofstream ufile;
+  ufile.open("/home/vulcan3/Documents/matrice_F_UAV_"+filename_ +".txt");
+  ufile << "TIME, x, y, z, roll, pitch, yaw \n";
+  ufile.close();
+
+  ufile.open("/home/vulcan3/Documents/matrice_F_ROB_"+filename_ +".txt");
+  ufile << "TIME, q1, q2 \n";
+  ufile.close();
+
+  ufile.open("/home/vulcan3/Documents/matrice_L_UAV_"+filename_ +".txt");
+  ufile << "TIME, x, y, z, roll, pitch, yaw \n";
+  ufile.close();
+
+  /*  ufile.open("/home/vulcan3/Documents/matrice_VIZ_"+filename_ +".txt");
+  ufile << "TIME, x, y, z, roll, pitch, yaw \n";
+  ufile.close();
+  */
+  ufile.open("/home/vulcan3/Documents/matrice_FT_"+filename_ +".txt");
+  ufile << "TIME, fx, fy, fz, nx, ny, nz \n";
+  ufile.close();
+
+  
+  ros::Subscriber leader_sub = nh.subscribe("/m1002/odometry", 1, leader_cb);
+  ros::Subscriber follower_sub = nh.subscribe("/m1001/odometry", 1, follower_cb);
+  //  ros::Subscriber vision_sub = nh.subscribe("/m1001/vision_pose", 1, vision_cb);
+  ros::Subscriber follow_robot = nh.subscribe("/m1002/robot_state", 1, follow_rob_cb);
+  ros::Subscriber ft_follower = nh.subscribe("/m1002/ft_sensor_topic", 1, ft_cb);
+
+  ros::spin();
+  return 0;
+}

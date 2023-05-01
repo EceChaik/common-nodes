@@ -1,0 +1,3 @@
+<launch>
+		<node name="logger" pkg="common_nodes" type="m100_force_log_node" output="screen"/>
+</launch>
